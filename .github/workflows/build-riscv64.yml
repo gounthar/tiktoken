@@ -24,17 +24,17 @@ jobs:
         run: |
           python3 -m venv /tmp/build-venv
           . /tmp/build-venv/bin/activate
-          pip install --upgrade pip setuptools wheel setuptools-rust
+          pip install --upgrade pip maturin setuptools
 
       - name: Build wheel
         run: |
           . /tmp/build-venv/bin/activate
-          pip wheel --no-deps --wheel-dir /tmp/wheels/ .
+          maturin build --release --out /tmp/wheels/
 
       - name: Verify platform tag
         run: |
           for whl in /tmp/wheels/*.whl; do
-            if echo "$whl" | grep -q "linux_riscv64"; then
+            if echo "$whl" | grep -q "linux_riscv64\|manylinux.*riscv64"; then
               echo "OK: $whl"
             else
               echo "FAIL: $whl missing riscv64 tag"
@@ -74,7 +74,6 @@ jobs:
         run: |
           WHL=$(ls /tmp/wheels/*.whl | head -1)
           BASENAME=$(basename "$WHL")
-          # Extract version from wheel filename: name-version-cpXX-...
           VERSION=$(echo "$BASENAME" | sed 's/^[^-]*-\([^-]*\)-.*/\1/')
           echo "whl_path=$WHL" >> "$GITHUB_OUTPUT"
           echo "whl_name=$BASENAME" >> "$GITHUB_OUTPUT"
@@ -91,13 +90,9 @@ jobs:
         run: |
           TAG="riscv64-v${{ steps.wheel_info.outputs.version }}"
           TITLE="riscv64 wheel v${{ steps.wheel_info.outputs.version }}"
-
-          # Delete existing release with same tag if it exists
           gh release delete "$TAG" --yes 2>/dev/null || true
           git tag -d "$TAG" 2>/dev/null || true
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
-
-          # Create new release
           gh release create "$TAG" \
             --title "$TITLE" \
             --notes "Prebuilt riscv64 wheel for $(uname -m) Linux.
@@ -116,6 +111,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -rf /tmp/wheels
+
   notify-index:
     needs: release
     runs-on: ubuntu-latest
