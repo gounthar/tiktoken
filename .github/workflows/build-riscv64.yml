@@ -33,7 +33,9 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Build wheel
-        run: uvx --python 3.14 --with maturin --with setuptools maturin build --release --out /tmp/wheels/
+        run: |
+          sudo apt-get update && sudo apt-get install -y libffi-dev
+          uvx --python 3.14 --with maturin --with setuptools --with cffi maturin build --release --out /tmp/wheels/
 
       - name: Verify platform tag
         run: |
