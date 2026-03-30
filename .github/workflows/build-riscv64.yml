@@ -12,32 +12,37 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, linux, riscv64]
+    runs-on: ubuntu-24.04-riscv
     timeout-minutes: 120
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_tag || github.ref }}
+          fetch-depth: 0
 
-      - name: Set up Python
+      - name: Setup Rust
         run: |
-          python3 -m venv /tmp/build-venv
-          . /tmp/build-venv/bin/activate
-          pip install --upgrade pip maturin setuptools
+          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v /opt/rust | tr '\n' ':' | sed 's/:$//')
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
 
       - name: Build wheel
-        run: |
-          . /tmp/build-venv/bin/activate
-          maturin build --release --out /tmp/wheels/
+        run: uvx --python 3.14 --with maturin --with setuptools maturin build --release --out /tmp/wheels/
 
       - name: Verify platform tag
         run: |
+          ls /tmp/wheels/*.whl
           for whl in /tmp/wheels/*.whl; do
             if echo "$whl" | grep -q "linux_riscv64\|manylinux.*riscv64"; then
               echo "OK: $whl"
             else
-              echo "FAIL: $whl missing riscv64 tag"
+              echo "FAIL: $whl does not have riscv64 platform tag"
               exit 1
             fi
           done
@@ -49,13 +54,9 @@ jobs:
           path: /tmp/wheels/*.whl
           retention-days: 90
 
-      - name: Cleanup
-        if: always()
-        run: rm -rf /tmp/build-venv /tmp/wheels
-
   release:
     needs: build
-    runs-on: [self-hosted, linux, riscv64]
+    runs-on: ubuntu-24.04-riscv
     if: success()
     env:
       GH_REPO: ${{ github.repository }}
@@ -95,15 +96,14 @@ jobs:
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
           gh release create "$TAG" \
             --title "$TITLE" \
-            --notes "Prebuilt riscv64 wheel for $(uname -m) Linux.
+            --notes "Prebuilt riscv64 wheel.
 
-          Built on: BananaPi F3 (SpacemiT K1, rv64imafdcv)
-          Python: $(python3 --version 2>&1)
+          Built on: RISE riscv64 runner (ubuntu-24.04-riscv)
           Wheel: ${{ steps.wheel_info.outputs.whl_name }}
 
           Install:
           \`\`\`
-          pip install tiktoken --find-links https://github.com/gounthar/tiktoken/releases/download/$TAG/
+          pip install tiktoken --find-links https://github.com/${{ github.repository }}/releases/download/$TAG/
           \`\`\`" \
             /tmp/wheels/*.whl \
             /tmp/wheels/SHA256SUMS
@@ -111,17 +111,3 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -rf /tmp/wheels
-
-  notify-index:
-    needs: release
-    runs-on: ubuntu-latest
-    if: success()
-    steps:
-      - name: Trigger index update
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-        run: |
-          gh api repos/gounthar/riscv64-python-wheels/dispatches \
-            -f event_type=fork-release-published \
-            -f "client_payload[repo]=${{ github.repository }}" \
-            -f "client_payload[tag]=${{ github.ref_name }}"
