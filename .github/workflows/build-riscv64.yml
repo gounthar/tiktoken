@@ -39,8 +39,13 @@ jobs:
           # FFI declaration generation.  uvx --with cffi covers the tool env
           # (Python 3.14); install it separately into the RISE runner's opt
           # Python so maturin can generate declarations for that interpreter too.
-          sudo /opt/python-3.12/bin/python3 -m pip install --quiet cffi
-          uvx --python 3.14 --with maturin --with setuptools --with cffi maturin build --release --out /tmp/wheels/
+          # Discover the path dynamically — runner image updates may change the version.
+          OPT_PYTHON=$(find /opt -maxdepth 3 -name "python3" -type f 2>/dev/null | head -1)
+          if [ -n "$OPT_PYTHON" ]; then
+            sudo "$OPT_PYTHON" -m pip install --quiet cffi
+          fi
+          uvx --python 3.14 --with maturin --with setuptools --with cffi maturin build \
+            --release --out /tmp/wheels/
 
       - name: Verify platform tag
         run: |
