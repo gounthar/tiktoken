@@ -35,12 +35,8 @@ jobs:
       - name: Build wheel
         run: |
           sudo apt-get update && sudo apt-get install -y libffi-dev
-          # cffi must be installed in every Python maturin auto-discovers for
-          # FFI declaration generation.  uvx --with cffi covers the tool env
-          # (Python 3.14); install it separately into the RISE runner's opt
-          # Python so maturin can generate declarations for that interpreter too.
-          sudo /opt/python-3.12/bin/python3 -m pip install --quiet cffi
-          uvx --python 3.14 --with maturin --with setuptools --with cffi maturin build --release --out /tmp/wheels/
+          uvx --python 3.14 --with maturin --with setuptools --with cffi maturin build \
+            --release --out /tmp/wheels/
 
       - name: Verify platform tag
         run: |
