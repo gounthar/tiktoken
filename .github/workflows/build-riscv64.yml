@@ -20,7 +20,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
+          repository: openai/tiktoken
+          ref: ${{ inputs.release_tag || 'main' }}
           fetch-depth: 0
 
       - name: Setup Rust
