@@ -16,12 +16,44 @@ jobs:
     timeout-minutes: 120
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      UPSTREAM_REPO: openai/tiktoken
     steps:
+      - name: Resolve upstream ref
+        id: upstream_ref
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          UPSTREAM="https://github.com/${UPSTREAM_REPO}.git"
+          REF="${RELEASE_TAG:-main}"
+
+          exists() {
+            git ls-remote --exit-code "$UPSTREAM" \
+              "refs/tags/$1" "refs/heads/$1" >/dev/null 2>&1
+          }
+
+          # Upstream tags carry no 'v' prefix (0.14.0, not v0.14.0), but the
+          # prefixed spelling is the one people reach for. Accept either.
+          if exists "$REF"; then
+            :
+          elif [ "${REF#v}" != "$REF" ] && exists "${REF#v}"; then
+            echo "Note: upstream tags have no 'v' prefix; using '${REF#v}'."
+            REF="${REF#v}"
+          else
+            echo "::error::'$REF' is not a branch or tag on ${UPSTREAM_REPO}."
+            echo "Recent upstream tags:"
+            git ls-remote --tags --refs "$UPSTREAM" \
+              | sed 's|.*refs/tags/||' | sort -Vr | head -5
+            exit 1
+          fi
+
+          echo "Building from ${UPSTREAM_REPO}@${REF}"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          repository: openai/tiktoken
-          ref: ${{ inputs.release_tag || 'main' }}
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ steps.upstream_ref.outputs.ref }}
           fetch-depth: 0
 
       - name: Setup Rust
