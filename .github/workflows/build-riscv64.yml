@@ -26,18 +26,34 @@ jobs:
           UPSTREAM="https://github.com/${UPSTREAM_REPO}.git"
           REF="${RELEASE_TAG:-main}"
 
-          exists() {
-            git ls-remote --exit-code "$UPSTREAM" \
-              "refs/tags/$1" "refs/heads/$1" >/dev/null 2>&1
+          # ls-remote glob-matches its patterns, so a bare '*' would other-
+          # wise "resolve" and then die at checkout. Demand a literal name.
+          if ! git check-ref-format "refs/tags/$REF" 2>/dev/null; then
+            echo "::error::'$REF' is not a valid ref name."
+            exit 1
+          fi
+
+          # Emit a fully qualified ref: checkout resolves an unqualified
+          # name by looking at branches before tags, so a same-named branch
+          # would shadow the release tag we were asked for.
+          resolve() {
+            for q in "refs/tags/$1" "refs/heads/$1"; do
+              if git ls-remote --exit-code --refs "$UPSTREAM" "$q" \
+                   >/dev/null 2>&1; then
+                echo "$q"
+                return 0
+              fi
+            done
+            return 1
           }
 
           # Upstream tags carry no 'v' prefix (0.14.0, not v0.14.0), but the
           # prefixed spelling is the one people reach for. Accept either.
-          if exists "$REF"; then
+          if QUALIFIED=$(resolve "$REF"); then
             :
-          elif [ "${REF#v}" != "$REF" ] && exists "${REF#v}"; then
+          elif [ "${REF#v}" != "$REF" ] \
+               && QUALIFIED=$(resolve "${REF#v}"); then
             echo "Note: upstream tags have no 'v' prefix; using '${REF#v}'."
-            REF="${REF#v}"
           else
             echo "::error::'$REF' is not a branch or tag on ${UPSTREAM_REPO}."
             echo "Recent upstream tags:"
@@ -46,8 +62,8 @@ jobs:
             exit 1
           fi
 
-          echo "Building from ${UPSTREAM_REPO}@${REF}"
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Building from ${UPSTREAM_REPO}@${QUALIFIED}"
+          echo "ref=$QUALIFIED" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v4
